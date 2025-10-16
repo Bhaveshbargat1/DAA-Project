@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Smart Grocery Price Optimizer</title>
+  <style>
+    :root{
+      --bg:#f6f8fa; --card:#ffffff; --accent:#1f6feb; --muted:#6b7280;
+      --success:#16a34a; --danger:#dc2626; --glass:rgba(31,111,235,0.08);
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    body{margin:0;background:var(--bg);color:#111827;line-height:1.45;padding:28px;}
+    .container{max-width:1100px;margin:0 auto;}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+    header h1{font-size:20px;margin:0}
+    .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 6px 18px rgba(15,23,42,0.06);margin-bottom:16px;}
+    .grid{display:grid;gap:12px}
+    .row-2{grid-template-columns:1fr 360px}
+    label{display:block;font-size:13px;margin-bottom:6px;color:var(--muted)}
+    input[type="text"], input[type="number"], select{
+      width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ee;background:#fff;
+      box-sizing:border-box;font-size:14px;
+    }
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;border:0;font-weight:600;cursor:pointer;}
+    .btn-primary{background:var(--accent);color:white}
+    .btn-ghost{background:transparent;border:1px solid #e6e9ee}
+    .btn-danger{background:var(--danger);color:white}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th, td{padding:8px;text-align:left;border-bottom:1px solid #f1f4f8;font-size:14px}
+    th{color:var(--muted);font-weight:600}
+    .flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .small{font-size:13px;color:var(--muted)}
+    .result-metrics{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    .metric{background:var(--glass);padding:8px 12px;border-radius:10px;font-weight:600}
+    .algorithm-block{margin-top:8px}
+    .item-actions button{margin-left:6px}
+    @media (max-width:880px){
+      .row-2{grid-template-columns:1fr}
+      .container{padding:12px}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Smart Grocery Price Optimizer</h1>
+      <div class="small">Greedy vs Dynamic Programming (0/1 Knapsack)</div>
+    </header>
+
+    <!-- Items & Controls -->
+    <div class="card grid row-2">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>Grocery Items</strong>
+          <div class="small">Add items below — then run optimizers</div>
+        </div>
+
+        <table id="items-table" aria-label="items table">
+          <thead>
+            <tr><th>Name</th><th>Price</th><th>Nutrition</th><th>Qty</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="items-tbody"></tbody>
+        </table>
+
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost" id="reset-sample">Load Sample Items</button>
+          <button class="btn btn-ghost" id="clear-items">Clear Items</button>
+        </div>
+      </div>
+
+      <div>
+        <div style="margin-bottom:8px"><strong>Add / Update Item</strong></div>
+
+        <label for="item-name">Name</label>
+        <input id="item-name" type="text" placeholder="e.g. Rice" />
+
+        <label for="item-price">Price (integer)</label>
+        <input id="item-price" type="number" min="0" step="1" placeholder="e.g. 50" />
+
+        <label for="item-nutrition">Nutrition Value (integer)</label>
+        <input id="item-nutrition" type="number" min="0" step="1" placeholder="e.g. 60" />
+
+        <label for="item-qty">Quantity (available units)</label>
+        <input id="item-qty" type="number" min="1" step="1" value="1" />
+
+        <div style="margin-top:10px" class="flex">
+          <button id="add-item" class="btn btn-primary">Add Item</button>
+          <button id="update-item" class="btn btn-ghost" style="display:none">Update Item</button>
+          <button id="cancel-edit" class="btn btn-ghost" style="display:none">Cancel</button>
+        </div>
+
+        <hr style="margin:12px 0" />
+
+        <label for="budget">Budget (integer)</label>
+        <input id="budget" type="number" min="0" step="1" value="500" />
+
+        <div style="margin-top:10px" class="flex">
+          <button id="run-compare" class="btn btn-primary">Run & Compare</button>
+          <button id="run-greedy" class="btn btn-ghost">Run Greedy</button>
+          <button id="run-dp" class="btn btn-ghost">Run Dynamic Programming</button>
+        </div>
+
+        <div class="small" style="margin-top:8px">Execution times measured with <code>performance.now()</code>. Memory not measured (browser limitation).</div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <strong>Results & Comparison</strong>
+        <div class="small">Compare nutrition and cost</div>
+      </div>
+
+      <div id="results-area">
+        <div style="margin-top:10px" id="greedy-result" class="algorithm-block"></div>
+        <div id="dp-result" class="algorithm-block"></div>
+
+        <div style="margin-top:12px">
+          <strong>Comparison</strong>
+          <div id="comparison" class="small" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+
+    <footer style="text-align:center;margin-top:12px;color:var(--muted)" class="small">
+      Smart Grocery Price Optimizer — Greedy & DP implementations in JavaScript
+    </footer>
+  </div>
+
+  <script>
+  // -----------------------
+  // Data model & utilities
+  // -----------------------
+  let items = []; // each: {id, name, price, nutrition, qty}
+  let editingId = null;
+
+  function uid() { return Math.random().toString(36).slice(2,9); }
+
+  function clampInt(v, fallback=0){ v = parseInt(v); return Number.isFinite(v) ? v : fallback; }
+
+  // Render items table
+  function renderItems(){
+    const tbody = document.getElementById('items-tbody');
+    tbody.innerHTML = '';
+    if(items.length === 0){
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="5" class="small" style="padding:12px">No items yet. Click "Load Sample Items" to add demo data.</td>';
+      tbody.appendChild(tr);
+      return;
+    }
+    items.forEach(it => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escapeHtml(it.name)}</td>
+        <td>${it.price}</td>
+        <td>${it.nutrition}</td>
+        <td>${it.qty}</td>
+        <td class="item-actions">
+          <button class="btn btn-ghost" data-action="edit" data-id="${it.id}">Edit</button>
+          <button class="btn btn-danger" data-action="del" data-id="${it.id}">Delete</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // -----------------------
+  // Greedy optimizer
+  // -----------------------
+  // Greedy: sort by nutrition/price ratio and pick until budget exhausted.
+  function greedyOptimizer(itemsList, budget){
+    // Expand quantities -> treat each unit as separate item for correctness with qty>1
+    const expanded = [];
+    itemsList.forEach(it => {
+      for(let k=0;k<it.qty;k++){
+        expanded.push({ ...it, qty:1 });
+      }
+    });
+    // sort descending by ratio (nutrition/price), tie-breaker by nutrition
+    expanded.sort((a,b) => {
+      const ra = (a.price === 0) ? Infinity : a.nutrition / a.price;
+      const rb = (b.price === 0) ? Infinity : b.nutrition / b.price;
+      if (rb === ra) return b.nutrition - a.nutrition;
+      return rb - ra;
+    });
+    let totalCost = 0, totalNutrition = 0;
+    const selected = [];
+    for(const it of expanded){
+      if(totalCost + it.price <= budget){
+        selected.push(it);
+        totalCost += it.price;
+        totalNutrition += it.nutrition;
+      }
+    }
+    return { selected, totalCost, totalNutrition };
+  }
+
+  // -----------------------
+  // Dynamic Programming (0/1 Knapsack)
+  // -----------------------
+  // We convert quantities by expanding duplicates (safe for small sample sizes).
+  function dpOptimizer(itemsList, budget){
+    // Expand quantities
+    const expanded = [];
+    itemsList.forEach(it => {
+      for(let k=0;k<it.qty;k++){
+        expanded.push({ name: it.name, price: it.price, nutrition: it.nutrition });
+      }
+    });
+    const n = expanded.length;
+    // create DP table (n+1) x (budget+1) with numbers
+    // Use 1D optimization with backtracking via parent pointers
+    // We'll build full 2D DP for easier backtracking (works for modest budgets)
+    const dp = Array.from({length:n+1}, ()=> new Array(budget+1).fill(0));
+    for(let i=1;i<=n;i++){
+      const wt = expanded[i-1].price;
+      const val = expanded[i-1].nutrition;
+      for(let w=0;w<=budget;w++){
+        if(wt <= w){
+          dp[i][w] = Math.max(dp[i-1][w], dp[i-1][w-wt] + val);
+        } else {
+          dp[i][w] = dp[i-1][w];
+        }
+      }
+    }
+    // backtrack
+    let w = budget;
+    const picked = [];
+    for(let i=n;i>0;i--){
+      if(dp[i][w] !== dp[i-1][w]){
+        // item i-1 was included
+        picked.push(expanded[i-1]);
+        w -= expanded[i-1].price;
+      }
+    }
+    const totalNutrition = dp[n][budget];
+    const totalCost = picked.reduce((s,i)=>s+i.price, 0);
+    return { selected: picked.reverse(), totalCost, totalNutrition };
+  }
+
+  // -----------------------
+  // UI bindings
+  // -----------------------
+  function bindUI(){
+    // Add item
+    document.getElementById('add-item').addEventListener('click', ()=>{
+      const name = document.getElementById('item-name').value.trim();
+      const price = clampInt(document.getElementById('item-price').value, null);
+      const nutrition = clampInt(document.getElementById('item-nutrition').value, null);
+      const qty = Math.max(1, clampInt(document.getElementById('item-qty').value, 1));
+      if(!name || price === null || nutrition === null){
+        alert('Please provide name, price and nutrition (integers).');
+        return;
+      }
+      items.push({ id: uid(), name, price, nutrition, qty });
+      clearItemForm();
+      renderItems();
+    });
+
+    // Update / cancel
+    document.getElementById('update-item').addEventListener('click', ()=>{
+      if(!editingId) return;
+      const name = document.getElementById('item-name').value.trim();
+      const price = clampInt(document.getElementById('item-price').value, null);
+      const nutrition = clampInt(document.getElementById('item-nutrition').value, null);
+      const qty = Math.max(1, clampInt(document.getElementById('item-qty').value, 1));
+      if(!name || price === null || nutrition === null){
+        alert('Please provide name, price and nutrition (integers).');
+        return;
+      }
+      const idx = items.findIndex(x=>x.id===editingId);
+      if(idx>=0){
+        items[idx] = { ...items[idx], name, price, nutrition, qty };
+      }
+      editingId = null;
+      clearItemForm();
+      toggleEdit(false);
+      renderItems();
+    });
+
+    document.getElementById('cancel-edit').addEventListener('click', ()=>{
+      editingId = null;
+      clearItemForm();
+      toggleEdit(false);
+    });
+
+    // Table actions: delegated
+    document.getElementById('items-tbody').addEventListener('click', (e)=>{
+      const btn = e.target.closest('button');
+      if(!btn) return;
+      const id = btn.dataset.id;
+      if(btn.dataset.action === 'edit'){
+        const it = items.find(x=>x.id===id);
+        if(!it) return;
+        editingId = id;
+        document.getElementById('item-name').value = it.name;
+        document.getElementById('item-price').value = it.price;
+        document.getElementById('item-nutrition').value = it.nutrition;
+        document.getElementById('item-qty').value = it.qty;
+        toggleEdit(true);
+      } else if(btn.dataset.action === 'del'){
+        items = items.filter(x=>x.id!==id);
+        renderItems();
+      }
+    });
+
+    // Sample / clear
+    document.getElementById('reset-sample').addEventListener('click', ()=>{
+      items = [
+        {id:uid(), name:'Rice', price:50, nutrition:60, qty:10},
+        {id:uid(), name:'Milk', price:40, nutrition:50, qty:5},
+        {id:uid(), name:'Eggs', price:10, nutrition:20, qty:12},
+        {id:uid(), name:'Apple', price:30, nutrition:40, qty:6},
+        {id:uid(), name:'Paneer', price:80, nutrition:70, qty:4},
+      ];
+      renderItems();
+    });
+
+    document.getElementById('clear-items').addEventListener('click', ()=>{
+      if(!confirm('Clear all items?')) return;
+      items = [];
+      renderItems();
+    });
+
+    // Run actions
+    document.getElementById('run-greedy').addEventListener('click', ()=> {
+      runGreedy();
+    });
+    document.getElementById('run-dp').addEventListener('click', ()=> {
+      runDP();
+    });
+    document.getElementById('run-compare').addEventListener('click', ()=>{
+      runCompare();
+    });
+  }
+
+  function toggleEdit(isEditing){
+    document.getElementById('add-item').style.display = isEditing ? 'none' : 'inline-flex';
+    document.getElementById('update-item').style.display = isEditing ? 'inline-flex' : 'none';
+    document.getElementById('cancel-edit').style.display = isEditing ? 'inline-flex' : 'none';
+  }
+
+  function clearItemForm(){
+    document.getElementById('item-name').value = '';
+    document.getElementById('item-price').value = '';
+    document.getElementById('item-nutrition').value = '';
+    document.getElementById('item-qty').value = 1;
+  }
+
+  // -----------------------
+  // Execution wrappers + render results
+  // -----------------------
+  function renderResultBlock(containerId, title, result, timeMs){
+    const el = document.getElementById(containerId);
+    if(!result) { el.innerHTML = ''; return; }
+    const itemsHtml = result.selected.map(it => <li>${escapeHtml(it.name)} — Price: ${it.price}, Nutrition: ${it.nutrition}</li>).join('');
+    el.innerHTML = `
+      <div style="margin-top:8px">
+        <strong>${title}</strong>
+        <div class="small">Time: ${timeMs.toFixed(2)} ms — Items chosen: ${result.selected.length}</div>
+        <div class="result-metrics" style="margin-top:6px">
+          <div class="metric">Total Nutrition: ${result.totalNutrition}</div>
+          <div class="metric">Total Cost: ${result.totalCost}</div>
+        </div>
+        <div style="margin-top:8px">
+          <details>
+            <summary class="small">Selected Items (click to expand)</summary>
+            <ul style="margin:8px 0 0 18px">${itemsHtml || '<li class="small">— none —</li>'}</ul>
+          </details>
+        </div>
+      </div>
+    `;
+  }
+
+  function runGreedy(){
+    const budget = clampInt(document.getElementById('budget').value, 0);
+    const t0 = performance.now();
+    const res = greedyOptimizer(items, budget);
+    const t1 = performance.now();
+    renderResultBlock('greedy-result','Greedy Algorithm', res, t1 - t0);
+    document.getElementById('comparison').innerText = '';
+  }
+
+  function runDP(){
+    const budget = clampInt(document.getElementById('budget').value, 0);
+    const t0 = performance.now();
+    const res = dpOptimizer(items, budget);
+    const t1 = performance.now();
+    renderResultBlock('dp-result','Dynamic Programming (0/1 Knapsack)', res, t1 - t0);
+    document.getElementById('comparison').innerText = '';
+  }
+
+  function runCompare(){
+    const budget = clampInt(document.getElementById('budget').value, 0);
+    // run greedy
+    const g0 = performance.now();
+    const greedyRes = greedyOptimizer(items, budget);
+    const g1 = performance.now();
+    // run dp
+    const d0 = performance.now();
+    const dpRes = dpOptimizer(items, budget);
+    const d1 = performance.now();
+    // render
+    renderResultBlock('greedy-result','Greedy Algorithm', greedyRes, g1 - g0);
+    renderResultBlock('dp-result','Dynamic Programming (0/1 Knapsack)', dpRes, d1 - d0);
+    // compare
+    let cmpText = '';
+    cmpText += Budget: ${budget}\n\n;
+    cmpText += Greedy -> Total Nutrition: ${greedyRes.totalNutrition}, Total Cost: ${greedyRes.totalCost}, Items: ${greedyRes.selected.length} (Time: ${(g1-g0).toFixed(2)} ms)\n;
+    cmpText += DP     -> Total Nutrition: ${dpRes.totalNutrition}, Total Cost: ${dpRes.totalCost}, Items: ${dpRes.selected.length} (Time: ${(d1-d0).toFixed(2)} ms)\n\n;
+    if(dpRes.totalNutrition > greedyRes.totalNutrition){
+      cmpText += 'DP produced higher total nutrition (optimal for 0/1 knapsack) — prefer DP when budgets are tight and item counts are moderate.\n';
+    } else if(dpRes.totalNutrition === greedyRes.totalNutrition){
+      cmpText += 'Both algorithms produced equal total nutrition for this input.\n';
+    } else {
+      cmpText += 'Greedy produced better total nutrition for this dataset — possible with certain item distributions.\n';
+    }
+    cmpText += '\nNotes: DP finds optimal nutrition for the expanded items (0/1 knapsack). Greedy is faster (usually) but not always optimal.';
+    document.getElementById('comparison').innerText = cmpText;
+  }
+
+  // -----------------------
+  // Initialize sample data + bindings
+  // -----------------------
+  (function init(){
+    // load default sample (same as your python example)
+    items = [
+      {id:uid(), name:'Rice', price:50, nutrition:60, qty:10},
+      {id:uid(), name:'Milk', price:40, nutrition:50, qty:5},
+      {id:uid(), name:'Eggs', price:10, nutrition:20, qty:12},
+      {id:uid(), name:'Apple', price:30, nutrition:40, qty:6},
+      {id:uid(), name:'Paneer', price:80, nutrition:70, qty:4},
+    ];
+    document.getElementById('budget').value = 500;
+    renderItems();
+    bindUI();
+  })();
+
+  </script>
+</body>
+</html>
